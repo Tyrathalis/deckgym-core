@@ -1,14 +1,13 @@
-use std::fs;
-
 use log::warn;
+#[cfg(feature = "cli")]
 use num_format::{Locale, ToFormattedString};
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 use crate::{
     card_ids::CardId,
     database::get_card_by_enum,
     players::{create_players, fill_code_array, PlayerCode},
-    simulate::create_progress_bar,
     state::GameOutcome,
     Deck, Game,
 };
@@ -87,6 +86,7 @@ where
     }
 }
 
+#[cfg(feature = "cli")]
 /// Optimizes a deck by simulating games with different combinations of candidate cards.
 pub fn cli_optimize(
     incomplete_deck_path: &str,
@@ -95,6 +95,9 @@ pub fn cli_optimize(
     sim_config: SimulationConfig,
     parallel_config: ParallelConfig,
 ) {
+    use crate::simulate::create_progress_bar;
+    use std::fs;
+
     let incomplete_deck =
         Deck::from_file(incomplete_deck_path).expect("Failed to parse incomplete deck file");
     let candidate_cards: Vec<String> = candidate_cards_str
@@ -253,6 +256,7 @@ where
     );
 
     // Configure rayon thread pool if specified
+    #[cfg(feature = "parallel")]
     if let Some(num_threads) = parallel_config.num_threads {
         rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
@@ -302,53 +306,42 @@ where
             .as_ref()
             .and_then(|cbs| cbs.on_game_complete.as_ref());
 
+        // Closure to run a single game and count wins
+        let run_game = |(deck_a, deck_b, player_codes): &(Deck, Deck, Vec<PlayerCode>)| {
+            let players =
+                create_players(deck_a.clone(), deck_b.clone(), player_codes.clone());
+            let seed = opt_config.seed.unwrap_or(rand::random::<u64>());
+            let mut game = Game::new(players, seed);
+            let outcome = game.play();
+
+            if let Some(callback) = game_callback {
+                callback();
+            }
+
+            // Count as win if first player (our deck) wins
+            if let Some(GameOutcome::Win(winner)) = outcome {
+                if winner == 0 {
+                    return 1;
+                }
+            }
+            0
+        };
+
         // Run games either in parallel or sequentially
-        let wins: usize = if parallel_config.enabled {
-            games_to_simulate
-                .par_iter()
-                .map(|(deck_a, deck_b, player_codes)| {
-                    let players =
-                        create_players(deck_a.clone(), deck_b.clone(), player_codes.clone());
-                    let seed = opt_config.seed.unwrap_or(rand::random::<u64>());
-                    let mut game = Game::new(players, seed);
-                    let outcome = game.play();
-
-                    if let Some(callback) = game_callback {
-                        callback();
-                    }
-
-                    // Count as win if first player (our deck) wins
-                    if let Some(GameOutcome::Win(winner)) = outcome {
-                        if winner == 0 {
-                            return 1;
-                        }
-                    }
-                    0
-                })
-                .sum()
-        } else {
-            games_to_simulate
-                .iter()
-                .map(|(deck_a, deck_b, player_codes)| {
-                    let players =
-                        create_players(deck_a.clone(), deck_b.clone(), player_codes.clone());
-                    let seed = opt_config.seed.unwrap_or(rand::random::<u64>());
-                    let mut game = Game::new(players, seed);
-                    let outcome = game.play();
-
-                    if let Some(callback) = game_callback {
-                        callback();
-                    }
-
-                    // Count as win if first player (our deck) wins
-                    if let Some(GameOutcome::Win(winner)) = outcome {
-                        if winner == 0 {
-                            return 1;
-                        }
-                    }
-                    0
-                })
-                .sum()
+        let wins: usize = {
+            #[cfg(feature = "parallel")]
+            {
+                if parallel_config.enabled {
+                    games_to_simulate.par_iter().map(run_game).sum()
+                } else {
+                    games_to_simulate.iter().map(run_game).sum()
+                }
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = &parallel_config;
+                games_to_simulate.iter().map(run_game).sum()
+            }
         };
 
         let total_games = games_to_simulate.len();
@@ -455,6 +448,7 @@ pub fn generate_valid_combinations(
         .collect()
 }
 
+#[cfg(feature = "cli")]
 /// Counts how many valid combinations will be generated.
 /// This is useful for setting up progress bars before running the optimization.
 fn count_valid_combinations(

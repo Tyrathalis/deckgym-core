@@ -30,10 +30,14 @@ pub use game::Game;
 pub use hooks::to_playable_card;
 pub use move_generation::generate_possible_trainer_actions;
 pub use optimize::{
-    cli_optimize, optimize, optimize_with_configs, EnemyDeckConfig, OptimizationConfig,
+    optimize, optimize_with_configs, EnemyDeckConfig, OptimizationConfig,
     ParallelConfig, SimulationConfig,
 };
-pub use simulate::{simulate, Simulation, SimulationCallbacks};
+#[cfg(feature = "cli")]
+pub use optimize::cli_optimize;
+pub use simulate::{Simulation, SimulationCallbacks};
+#[cfg(feature = "cli")]
+pub use simulate::simulate;
 pub use simulation_event_handler::ComputedStats;
 pub use state::State;
 
@@ -42,6 +46,9 @@ pub mod python_bindings;
 
 #[cfg(feature = "tui")]
 pub mod tui;
+
+#[cfg(feature = "wasm")]
+pub mod wasm_bindings;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;

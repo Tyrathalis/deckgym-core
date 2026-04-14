@@ -1,21 +1,32 @@
+#[cfg(feature = "cli")]
 use env_logger::{Builder, Env};
+#[cfg(feature = "cli")]
 use indicatif::{ProgressBar, ProgressStyle};
+#[cfg(feature = "cli")]
 use log::warn;
+#[cfg(feature = "cli")]
 use num_format::{Locale, ToFormattedString};
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
+#[cfg(feature = "cli")]
 use std::io::Write;
+#[cfg(feature = "cli")]
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[cfg(feature = "cli")]
+use crate::data_exporter::DataExporter;
 use crate::{
-    data_exporter::DataExporter,
-    optimize::{ParallelConfig, SimulationConfig},
-    players::{create_players, fill_code_array, PlayerCode},
-    simulation_event_handler::{
-        CompositeSimulationEventHandler, SimulationEventHandler, StatsCollector,
-    },
+    players::{create_players, PlayerCode},
+    simulation_event_handler::{CompositeSimulationEventHandler, SimulationEventHandler},
     state::GameOutcome,
     Deck, Game,
+};
+#[cfg(feature = "cli")]
+use crate::{
+    optimize::{ParallelConfig, SimulationConfig},
+    players::fill_code_array,
+    simulation_event_handler::StatsCollector,
 };
 
 /// Type alias for player factory function
@@ -167,6 +178,7 @@ impl Simulation {
 
     pub fn run(&mut self) -> Vec<Option<GameOutcome>> {
         // Configure rayon thread pool if specified
+        #[cfg(feature = "parallel")]
         if let Some(num_threads) = self.num_threads {
             rayon::ThreadPoolBuilder::new()
                 .num_threads(num_threads)
@@ -228,16 +240,27 @@ impl Simulation {
         };
 
         // Run simulations either in parallel or sequentially
-        let results: Vec<(Option<GameOutcome>, CompositeSimulationEventHandler)> = if self.parallel
-        {
-            (0..self.num_simulations)
-                .into_par_iter()
-                .map(run_single_simulation)
-                .collect()
-        } else {
-            (0..self.num_simulations)
-                .map(run_single_simulation)
-                .collect()
+        let results: Vec<(Option<GameOutcome>, CompositeSimulationEventHandler)> = {
+            #[cfg(feature = "parallel")]
+            {
+                if self.parallel {
+                    (0..self.num_simulations)
+                        .into_par_iter()
+                        .map(run_single_simulation)
+                        .collect()
+                } else {
+                    (0..self.num_simulations)
+                        .map(run_single_simulation)
+                        .collect()
+                }
+            }
+            #[cfg(not(feature = "parallel"))]
+            {
+                let _ = self.parallel; // suppress unused warning
+                (0..self.num_simulations)
+                    .map(run_single_simulation)
+                    .collect()
+            }
         };
 
         // Split outcomes and event handlers
@@ -261,6 +284,7 @@ impl Simulation {
     }
 }
 
+#[cfg(feature = "cli")]
 /// Registers DataExporter with the given output folder
 fn register_data_exporter(simulation: Simulation, output_folder: String) -> Simulation {
     let output_path = PathBuf::from(output_folder);
@@ -278,6 +302,7 @@ fn register_data_exporter(simulation: Simulation, output_folder: String) -> Simu
     simulation.register_with_closure(move || Box::new(DataExporter::new(output_path.clone())))
 }
 
+#[cfg(feature = "cli")]
 /// Functional API for running simulations
 pub fn simulate(
     deck_a_path: &str,
@@ -335,6 +360,7 @@ pub fn simulate(
     }
 }
 
+#[cfg(feature = "cli")]
 /// Creates a styled progress bar with consistent styling across the codebase
 pub fn create_progress_bar(total: u64) -> ProgressBar {
     let pb = ProgressBar::new(total);
@@ -349,6 +375,7 @@ pub fn create_progress_bar(total: u64) -> ProgressBar {
     pb
 }
 
+#[cfg(feature = "cli")]
 /// Print simulation statistics to the console
 pub fn print_stats(stats: &crate::simulation_event_handler::ComputedStats) {
     warn!(
@@ -387,6 +414,7 @@ pub fn print_stats(stats: &crate::simulation_event_handler::ComputedStats) {
     );
 }
 
+#[cfg(feature = "cli")]
 // Set up the logger according to the given verbosity.
 pub fn initialize_logger(verbose: u8) {
     let level = match verbose {

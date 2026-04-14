@@ -1,3 +1,4 @@
+#[cfg(feature = "cli")]
 use colored::Colorize;
 use log::{debug, info, trace};
 use rand::{rngs::StdRng, SeedableRng};
@@ -5,12 +6,13 @@ use uuid::Uuid;
 
 use crate::{
     actions::{apply_action, Action},
-    models::EnergyType,
     players::Player,
     simulation_event_handler::{CompositeSimulationEventHandler, SimulationEventHandler},
     state::GameOutcome,
     State,
 };
+#[cfg(feature = "cli")]
+use crate::models::EnergyType;
 
 // It has a lifetime to allow it to borrow the event handler mutably for the duration of the game
 pub struct Game<'a> {
@@ -92,8 +94,7 @@ impl<'a> Game<'a> {
         let (actor, actions) = self.state.generate_possible_actions();
 
         let player = &self.players[actor];
-        let color = self.get_color(actor);
-        self.print_turn_header(actor, player.as_ref(), &color);
+        self.print_turn_header(actor, player.as_ref());
         let action = if actions.len() == 1 {
             debug!("Only one possible action, selecting it.");
             actions[0].clone()
@@ -107,7 +108,7 @@ impl<'a> Game<'a> {
         };
 
         let player = &self.players[actor];
-        self.print_action(&action, actor, player.as_ref(), &color);
+        self.print_action(&action, actor, player.as_ref());
 
         if self.event_handler.is_some() {
             if let Some(handler) = &mut self.event_handler {
@@ -132,22 +133,42 @@ impl<'a> Game<'a> {
         self.state = state;
     }
 
-    fn print_turn_header(&self, actor: usize, player: &dyn Player, color: &str) {
+    fn print_turn_header(&self, actor: usize, player: &dyn Player) {
         if self.debug {
-            debug!(
-                "{}{}",
-                format!("===== {}|{:?}|", self.state.turn_count, self.state.points).color(color),
-                format!("{actor}:{player:?}").color(color),
-            );
+            #[cfg(feature = "cli")]
+            {
+                let color = self.get_color(actor);
+                debug!(
+                    "{}{}",
+                    format!("===== {}|{:?}|", self.state.turn_count, self.state.points)
+                        .color(&*color),
+                    format!("{actor}:{player:?}").color(&*color),
+                );
+            }
+            #[cfg(not(feature = "cli"))]
+            {
+                let _ = actor;
+                debug!(
+                    "===== {}|{:?}| {player:?}",
+                    self.state.turn_count, self.state.points,
+                );
+            }
         }
     }
 
-    fn print_action(&self, action: &Action, _: usize, player: &dyn Player, color: &str) {
+    fn print_action(&self, action: &Action, _: usize, player: &dyn Player) {
         if self.debug {
+            #[cfg(feature = "cli")]
             info!(
                 "{} chose {}",
-                format!("{}:{:?}", self.state.turn_count, player).color(color),
+                format!("{}:{:?}", self.state.turn_count, player)
+                    .color(&*self.get_color(self.state.current_player)),
                 format!("{:?}", action.action).bold()
+            );
+            #[cfg(not(feature = "cli"))]
+            info!(
+                "{}:{:?} chose {:?}",
+                self.state.turn_count, player, action.action
             );
         }
     }
@@ -158,6 +179,7 @@ impl<'a> Game<'a> {
         }
     }
 
+    #[cfg(feature = "cli")]
     /// see https://github.com/colored-rs/colored?tab=readme-ov-file#colors
     fn get_color(&self, actor: usize) -> String {
         let energy = self.state.decks[actor].energy_types[0];
