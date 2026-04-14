@@ -8,6 +8,20 @@ use crate::{
     state::{GameOutcome, State},
 };
 
+/// Build the serde-wasm-bindgen serializer used by every binding. We enable
+/// `serialize_missing_as_null` so `Option::None` crosses the boundary as
+/// `null` rather than `undefined` — the TS layer's types declare
+/// `GameOutcome | null`, and game-runner termination checks rely on `=== null`.
+fn js_serializer() -> serde_wasm_bindgen::Serializer {
+    serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true)
+}
+
+fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsError> {
+    value
+        .serialize(&js_serializer())
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// Result wrapper for WASM API calls
 #[derive(Serialize, Deserialize)]
 struct CreateGameResult {
@@ -48,7 +62,7 @@ pub fn create_game(deck_a_json: &str, deck_b_json: &str, seed: u64) -> Result<Js
         current_player: state.current_player,
         state,
     };
-    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+    to_js(&result)
 }
 
 /// Get the legal actions for the current game state.
@@ -61,7 +75,7 @@ pub fn get_legal_actions(state_json: &str) -> Result<JsValue, JsError> {
     let (actor, actions) = state.generate_possible_actions();
 
     let result = LegalActionsResult { actor, actions };
-    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+    to_js(&result)
 }
 
 /// Apply an action to the game state.
@@ -85,7 +99,7 @@ pub fn apply_action_wasm(
         winner: state.winner,
         state,
     };
-    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+    to_js(&result)
 }
 
 /// Get a human-readable text display of the game state.
@@ -102,5 +116,5 @@ pub fn get_state_display(state_json: &str) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub fn parse_deck_from_string(contents: &str) -> Result<JsValue, JsError> {
     let deck = Deck::from_string(contents).map_err(|e| JsError::new(&e))?;
-    serde_wasm_bindgen::to_value(&deck).map_err(|e| JsError::new(&e.to_string()))
+    to_js(&deck)
 }
