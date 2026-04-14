@@ -95,3 +95,12 @@ pub fn get_state_display(state_json: &str) -> Result<String, JsError> {
         serde_json::from_str(state_json).map_err(|e| JsError::new(&format!("state: {e}")))?;
     Ok(state.debug_string())
 }
+
+/// Parse a deck from the engine's text list format (`Energy: ...` + lines of
+/// `<count> <set> <number>`). Returns a serialized `Deck` ready to hand back
+/// to `create_game`.
+#[wasm_bindgen]
+pub fn parse_deck_from_string(contents: &str) -> Result<JsValue, JsError> {
+    let deck = Deck::from_string(contents).map_err(|e| JsError::new(&e))?;
+    serde_wasm_bindgen::to_value(&deck).map_err(|e| JsError::new(&e.to_string()))
+}
