@@ -20,6 +20,16 @@ use crate::{
 
 pub use played_card::{has_serperior_jungle_totem, PlayedCard};
 
+/// Maximum number of player-turns in a Pokémon TCG Pocket Versus match before
+/// the game ends in a tie. Per the in-app Battle Rules (see
+/// `docs/pocket-rules.md` §9), matches are capped at 30 player-turns total —
+/// if the limit is reached without a winner, the game ends in a draw.
+///
+/// `turn_count` counts player-turns (it increments every time `advance_turn`
+/// runs, which happens once per player-turn after setup). `turn_count == 1`
+/// is the first player's first turn.
+pub const VERSUS_TURN_LIMIT: u8 = 30;
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameOutcome {
     Win(usize),
@@ -423,13 +433,29 @@ impl State {
         self.end_turn_pending = false;
         self.current_player = (self.current_player + 1) % 2;
         self.turn_count += 1;
+
+        // Pocket Versus mode ends in a tie at turn 30 (docs/pocket-rules.md §9).
+        // We apply this check after the increment: if a player has just ended
+        // turn N and the increment produces turn_count > VERSUS_TURN_LIMIT,
+        // there would be a turn N+1 = 31st player-turn, which the rules
+        // forbid. Skip the new turn's maintenance/draw/energy and declare a
+        // draw. A winner declared by end-of-turn checkup (which runs before
+        // advance_turn, see apply_pokemon_checkup) takes precedence.
+        if self.turn_count > VERSUS_TURN_LIMIT && self.winner.is_none() {
+            debug!(
+                "Turn limit ({VERSUS_TURN_LIMIT}) reached, declaring tie"
+            );
+            self.winner = Some(GameOutcome::Tie);
+            return;
+        }
+
         self.end_turn_maintenance();
         self.queue_draw_action(self.current_player, 1);
         self.generate_energy();
     }
 
     pub(crate) fn is_game_over(&self) -> bool {
-        self.winner.is_some() || self.turn_count >= 100
+        self.winner.is_some() || self.turn_count > VERSUS_TURN_LIMIT
     }
 
     pub(crate) fn num_in_play_of_type(&self, player: usize, energy: EnergyType) -> usize {
@@ -664,5 +690,76 @@ mod tests {
         assert_eq!(state.discard_energies[0].len(), 2);
         assert_eq!(state.discard_energies[0][0], EnergyType::Grass);
         assert_eq!(state.discard_energies[0][1], EnergyType::Grass);
+    }
+
+    /// Regression test for the non-terminating-seed bug found in Phase 0.
+    /// See `docs/pocket-rules.md` §9 and `devlogs/2026-04-14-phase-1-step-0.md`.
+    ///
+    /// `advance_turn` must declare a tie once `turn_count` exceeds
+    /// `VERSUS_TURN_LIMIT` (30). Before the fix, the engine's termination
+    /// check was `turn_count >= 100` AND winner was never set, so
+    /// `is_game_over()` could go `true` while `state.winner` stayed `None`.
+    #[test]
+    fn test_advance_turn_declares_tie_past_versus_turn_limit() {
+        let (deck_a, deck_b) = load_test_decks();
+        let mut state = State::new(&deck_a, &deck_b);
+
+        // Drive straight to the boundary without caring about gameplay —
+        // advance_turn's decision on the tie is a pure function of
+        // turn_count, current_player, and winner.
+        state.turn_count = VERSUS_TURN_LIMIT;
+        state.winner = None;
+        state.end_turn_pending = true;
+
+        state.advance_turn();
+
+        assert_eq!(
+            state.turn_count,
+            VERSUS_TURN_LIMIT + 1,
+            "advance_turn increments before the tie check",
+        );
+        assert_eq!(
+            state.winner,
+            Some(GameOutcome::Tie),
+            "crossing the turn limit must set winner to Tie",
+        );
+        assert!(state.is_game_over());
+    }
+
+    /// A winner declared inside end-of-turn checkup (before advance_turn
+    /// runs) must take precedence over the turn-limit tie. This guards
+    /// against the advance_turn check accidentally clobbering a win.
+    #[test]
+    fn test_advance_turn_preserves_existing_winner_at_turn_limit() {
+        let (deck_a, deck_b) = load_test_decks();
+        let mut state = State::new(&deck_a, &deck_b);
+
+        state.turn_count = VERSUS_TURN_LIMIT;
+        state.winner = Some(GameOutcome::Win(0));
+        state.end_turn_pending = true;
+
+        state.advance_turn();
+
+        assert_eq!(
+            state.winner,
+            Some(GameOutcome::Win(0)),
+            "advance_turn must not overwrite a pre-existing winner",
+        );
+    }
+
+    /// Below the turn limit, advance_turn must leave winner unset.
+    #[test]
+    fn test_advance_turn_does_not_tie_below_turn_limit() {
+        let (deck_a, deck_b) = load_test_decks();
+        let mut state = State::new(&deck_a, &deck_b);
+
+        state.turn_count = VERSUS_TURN_LIMIT - 1;
+        state.winner = None;
+        state.end_turn_pending = true;
+
+        state.advance_turn();
+
+        assert_eq!(state.turn_count, VERSUS_TURN_LIMIT);
+        assert_eq!(state.winner, None);
     }
 }
