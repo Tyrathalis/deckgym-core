@@ -14,6 +14,13 @@ mod shared_mutations;
 mod types;
 
 pub(crate) use apply_action::apply_action;
+/// Test/wasm-binding re-export of `apply_action`. The core `apply_action` is
+/// `pub(crate)` to keep the normal public API tight (`Game::play` is the
+/// entry point for orchestrated play), but Ditto Trainer's heuristic
+/// integration tests and wasm bindings drive the engine one action at a
+/// time, so we need it exposed when either gate applies.
+#[cfg(any(test, feature = "test-utils", feature = "wasm"))]
+pub use apply_action::apply_action as apply_action_public;
 pub(crate) use apply_action::apply_evolve;
 pub(crate) use apply_action::apply_place_card;
 pub(crate) use apply_action::forecast_action;
