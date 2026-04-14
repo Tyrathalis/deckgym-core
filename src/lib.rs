@@ -10,6 +10,7 @@ pub mod effects;
 pub mod example_utils;
 pub mod game;
 pub mod gameplay_stats_collector;
+pub mod heuristics;
 mod hooks;
 pub mod models;
 pub mod move_generation;
