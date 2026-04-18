@@ -16,17 +16,17 @@ use uuid::Uuid;
 
 #[cfg(feature = "cli")]
 use crate::data_exporter::DataExporter;
-use crate::{
-    players::{create_players, PlayerCode},
-    simulation_event_handler::{CompositeSimulationEventHandler, SimulationEventHandler},
-    state::GameOutcome,
-    Deck, Game,
-};
 #[cfg(feature = "cli")]
 use crate::{
     optimize::{ParallelConfig, SimulationConfig},
     players::fill_code_array,
     simulation_event_handler::StatsCollector,
+};
+use crate::{
+    players::{create_players, PlayerCode},
+    simulation_event_handler::{CompositeSimulationEventHandler, SimulationEventHandler},
+    state::GameOutcome,
+    Deck, Game,
 };
 
 /// Type alias for player factory function

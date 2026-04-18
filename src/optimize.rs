@@ -308,8 +308,7 @@ where
 
         // Closure to run a single game and count wins
         let run_game = |(deck_a, deck_b, player_codes): &(Deck, Deck, Vec<PlayerCode>)| {
-            let players =
-                create_players(deck_a.clone(), deck_b.clone(), player_codes.clone());
+            let players = create_players(deck_a.clone(), deck_b.clone(), player_codes.clone());
             let seed = opt_config.seed.unwrap_or(rand::random::<u64>());
             let mut game = Game::new(players, seed);
             let outcome = game.play();

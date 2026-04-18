@@ -15,8 +15,8 @@
 
 use deckgym::actions::{Action, SimpleAction};
 use deckgym::heuristics::{
-    apply_heuristic, AttackSelector, BenchPriority, HeuristicConfig, RetreatPolicy,
-    SupporterGreed, TargetPriority,
+    apply_heuristic, AttackSelector, BenchPriority, HeuristicConfig, RetreatPolicy, SupporterGreed,
+    TargetPriority,
 };
 use deckgym::models::TrainerType;
 use deckgym::state::State;
@@ -167,8 +167,7 @@ fn heuristic_config_round_trips_through_json() {
     // And a human-readable sanity check: BelowHpRatio should round-trip
     // its float.
     assert!(
-        json.contains("BelowHpRatio")
-            && json.contains("0.25"),
+        json.contains("BelowHpRatio") && json.contains("0.25"),
         "unexpected serialisation: {json}"
     );
 }

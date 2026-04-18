@@ -4,6 +4,8 @@ use log::{debug, info, trace};
 use rand::{rngs::StdRng, SeedableRng};
 use uuid::Uuid;
 
+#[cfg(feature = "cli")]
+use crate::models::EnergyType;
 use crate::{
     actions::{apply_action, Action},
     players::Player,
@@ -11,8 +13,6 @@ use crate::{
     state::GameOutcome,
     State,
 };
-#[cfg(feature = "cli")]
-use crate::models::EnergyType;
 
 // It has a lifetime to allow it to borrow the event handler mutably for the duration of the game
 pub struct Game<'a> {

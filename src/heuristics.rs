@@ -121,11 +121,7 @@ impl Default for HeuristicConfig {
 
 /// Pick an `Activate` action (post-KO promotion) per `TargetPriority`.
 /// Returns `None` if no `Activate` action is legal.
-pub fn pick_activate(
-    priority: &TargetPriority,
-    state: &State,
-    legal: &[Action],
-) -> Option<Action> {
+pub fn pick_activate(priority: &TargetPriority, state: &State, legal: &[Action]) -> Option<Action> {
     let activates: Vec<&Action> = legal
         .iter()
         .filter(|a| matches!(a.action, SimpleAction::Activate { .. }))
@@ -156,11 +152,7 @@ pub fn pick_activate(
 
 /// Pick a `Retreat` action per `RetreatPolicy`. Returns `None` if no
 /// `Retreat` action is legal or the policy doesn't want to retreat now.
-pub fn pick_retreat(
-    policy: &RetreatPolicy,
-    state: &State,
-    legal: &[Action],
-) -> Option<Action> {
+pub fn pick_retreat(policy: &RetreatPolicy, state: &State, legal: &[Action]) -> Option<Action> {
     let retreats: Vec<&Action> = legal
         .iter()
         .filter(|a| matches!(a.action, SimpleAction::Retreat(_)))
@@ -313,9 +305,7 @@ pub fn apply_heuristic(config: &HeuristicConfig, state: &State, legal: &[Action]
     if let Some(a) = pick_place(&config.bench_priority, legal) {
         return a;
     }
-    if let Some(a) = first_matching(legal, |a| {
-        matches!(a.action, SimpleAction::Evolve { .. })
-    }) {
+    if let Some(a) = first_matching(legal, |a| matches!(a.action, SimpleAction::Evolve { .. })) {
         return a;
     }
     if let Some(a) = first_matching(legal, is_non_supporter_trainer) {
@@ -525,10 +515,7 @@ mod tests {
         )
     }
 
-    fn state_with_bench(
-        actor: usize,
-        slots: Vec<(usize, PlayedCard)>,
-    ) -> State {
+    fn state_with_bench(actor: usize, slots: Vec<(usize, PlayedCard)>) -> State {
         let mut state = State::default();
         for (idx, p) in slots {
             state.in_play_pokemon[actor][idx] = Some(p);
@@ -676,7 +663,13 @@ mod tests {
         let profs_research = get_card_by_enum(CardId::PA007ProfessorsResearch).as_trainer();
         let legal = vec![
             attach_turn(0),
-            mk_action(0, SimpleAction::Play { trainer_card: profs_research }, false),
+            mk_action(
+                0,
+                SimpleAction::Play {
+                    trainer_card: profs_research,
+                },
+                false,
+            ),
         ];
         let pick = pick_supporter(&SupporterGreed::Always, &legal).unwrap();
         if let SimpleAction::Play { trainer_card } = &pick.action {
@@ -689,9 +682,13 @@ mod tests {
     #[test]
     fn supporter_greed_never_returns_none() {
         let profs_research = get_card_by_enum(CardId::PA007ProfessorsResearch).as_trainer();
-        let legal = vec![
-            mk_action(0, SimpleAction::Play { trainer_card: profs_research }, false),
-        ];
+        let legal = vec![mk_action(
+            0,
+            SimpleAction::Play {
+                trainer_card: profs_research,
+            },
+            false,
+        )];
         assert!(pick_supporter(&SupporterGreed::Never, &legal).is_none());
     }
 
@@ -707,10 +704,7 @@ mod tests {
     fn bench_priority_first_picks_first_place() {
         let bulbasaur = get_card_by_enum(CardId::A1001Bulbasaur);
         let exeggcute = get_card_by_enum(CardId::A1021Exeggcute);
-        let legal = vec![
-            place(0, bulbasaur, 1),
-            place(0, exeggcute, 2),
-        ];
+        let legal = vec![place(0, bulbasaur, 1), place(0, exeggcute, 2)];
         let pick = pick_place(&BenchPriority::First, &legal).unwrap();
         assert_eq!(pick, legal[0]);
     }
@@ -760,7 +754,13 @@ mod tests {
             attach_turn(0),
             attack(0, 0),
             place(0, bulbasaur, 1),
-            mk_action(0, SimpleAction::Play { trainer_card: profs_research }, false),
+            mk_action(
+                0,
+                SimpleAction::Play {
+                    trainer_card: profs_research,
+                },
+                false,
+            ),
         ];
         let config = HeuristicConfig::default();
         let pick = apply_heuristic(&config, &state, &legal);
