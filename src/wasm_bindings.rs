@@ -6,6 +6,7 @@ use crate::{
     actions::{apply_action, Action},
     deck::Deck,
     heuristics::{apply_heuristic, HeuristicConfig},
+    shaping::board_value_for_player,
     state::{GameOutcome, State},
 };
 
@@ -150,14 +151,17 @@ struct ShapingSignals {
     /// step. Non-turn-energy attaches (from card effects) are excluded.
     agent_energy_attached: u32,
     /// Phase 2 Step 0j — HP-remaining potential shaping. Change in the
-    /// prize-weighted "KO proximity" sum across opponent Pokémon between
-    /// `pre` and `post`. `V(player) = Σ prize_value_i × (1 − (hp_i/max_hp_i)²)`
-    /// over the player's in-play Pokémon; `agent_v_opp_delta = V(post, opp) −
-    /// V(pre, opp)`. Positive when the agent pushed opponent Pokémon closer
-    /// to KO or KO'd them; weights damage on a 20-HP basic more than the
-    /// same damage on a 180-HP EX. Replaces the damage-counter shaping as
-    /// the primary channel in Step 0j's balanced preset (rationale:
-    /// `docs/reward-signal-catalog.md` §HP-remaining potential shaping).
+    /// prize-weighted "KO-progress" sum across opponent Pokémon between
+    /// `pre` and `post`. See `crate::shaping::board_value_for_player` for
+    /// the V formula; the discard-pile term there ensures V is
+    /// monotonically non-decreasing under damage and KOs, so
+    /// `agent_v_opp_delta = V(post, opp) − V(pre, opp)` is positive when
+    /// the agent pushed opponent Pokémon closer to KO *or* KO'd them
+    /// (including bench-promote cases). Weights damage on a 20-HP basic
+    /// more than the same damage on a 180-HP EX. Replaces the damage-
+    /// counter shaping as the primary channel in Step 0j's balanced
+    /// preset (rationale: `docs/reward-signal-catalog.md` §HP-remaining
+    /// potential shaping).
     agent_v_opp_delta: f32,
     /// Symmetric self-damage channel: `V(post, agent) − V(pre, agent)`.
     /// Positive when the agent's own Pokémon took damage or were KO'd;
@@ -465,35 +469,6 @@ fn compute_shaping_signals(
         opponent_prize_total: post.points[opp] as u32,
         intermediate_actions,
     }
-}
-
-/// Phase 2 Step 0j — prize-weighted "KO proximity" sum over a player's
-/// in-play Pokémon. `ko_proximity(HP, max_HP) = 1 − (HP/max_HP)²` is the
-/// concave curve from `docs/reward-signal-catalog.md` §Simple smooth —
-/// its derivative roughly triples from 100% HP to 20% HP, so damage on
-/// already-wounded targets earns more shaping reward than damage on a
-/// full-health one. Prize value comes from `Card::get_knockout_points`
-/// (1 for regular, 2 for EX, 3 for Mega) so EX-weighted damage is
-/// implicit in the shape.
-///
-/// Dead slots contribute zero (the Pokémon has already been discarded and
-/// the prize credited via `agent_prize_delta`). A KO'd Pokémon between
-/// pre and post manifests as (positive pre value, zero post value) in
-/// the caller's delta, matching the existing `total_damage_done_to`
-/// semantics.
-fn board_value_for_player(state: &State, player: usize) -> f32 {
-    let mut v: f32 = 0.0;
-    for slot in 0..4 {
-        if let Some(pc) = &state.in_play_pokemon[player][slot] {
-            let max_hp = pc.get_effective_total_hp().max(1) as f32;
-            let remaining = pc.get_remaining_hp() as f32;
-            let ratio = (remaining / max_hp).clamp(0.0, 1.0);
-            let ko_proximity = 1.0 - ratio * ratio;
-            let prize = pc.card.get_knockout_points() as f32;
-            v += prize * ko_proximity;
-        }
-    }
-    v
 }
 
 /// Damage done to `target_player`'s Pokémon between `pre` and `post`.
