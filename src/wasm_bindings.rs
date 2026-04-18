@@ -149,6 +149,28 @@ struct ShapingSignals {
     /// Count of turn-energy `Attach` actions the agent executed during this
     /// step. Non-turn-energy attaches (from card effects) are excluded.
     agent_energy_attached: u32,
+    /// Phase 2 Step 0j — HP-remaining potential shaping. Change in the
+    /// prize-weighted "KO proximity" sum across opponent Pokémon between
+    /// `pre` and `post`. `V(player) = Σ prize_value_i × (1 − (hp_i/max_hp_i)²)`
+    /// over the player's in-play Pokémon; `agent_v_opp_delta = V(post, opp) −
+    /// V(pre, opp)`. Positive when the agent pushed opponent Pokémon closer
+    /// to KO or KO'd them; weights damage on a 20-HP basic more than the
+    /// same damage on a 180-HP EX. Replaces the damage-counter shaping as
+    /// the primary channel in Step 0j's balanced preset (rationale:
+    /// `docs/reward-signal-catalog.md` §HP-remaining potential shaping).
+    agent_v_opp_delta: f32,
+    /// Symmetric self-damage channel: `V(post, agent) − V(pre, agent)`.
+    /// Positive when the agent's own Pokémon took damage or were KO'd;
+    /// the reward weight is typically negative so self-damage is a
+    /// penalty. Captures EX-weighted damage taken without a separate
+    /// multiplier.
+    agent_v_self_delta: f32,
+    /// Post-state prize totals. Exposed so the tie-reward curve
+    /// (`tanh((agent_prize − opp_prize)/2) × tieBase`) can be computed at
+    /// terminal without needing the full post-state in the reward path.
+    /// Mirrors `post.points[agent]` / `post.points[opp]`.
+    agent_prize_total: u32,
+    opponent_prize_total: u32,
     /// Every action applied between input and return, in chronological
     /// order. Starts with the agent's action (for `step_until_agent_decision`)
     /// or with the opponent's setup actions (for `init_match`). For logging
@@ -339,8 +361,7 @@ pub fn enumerate_one_step(
             &mut actions_applied,
         )?;
 
-        let shaping_signals =
-            compute_shaping_signals(&pre, &state, agent_player, actions_applied);
+        let shaping_signals = compute_shaping_signals(&pre, &state, agent_player, actions_applied);
         branches.push(EnumerationBranch {
             action: action.clone(),
             result: StepResult {
@@ -426,6 +447,11 @@ fn compute_shaping_signals(
         })
         .count() as u32;
 
+    // Phase 2 Step 0j — HP-remaining potential shaping.
+    let agent_v_opp_delta = board_value_for_player(post, opp) - board_value_for_player(pre, opp);
+    let agent_v_self_delta =
+        board_value_for_player(post, agent) - board_value_for_player(pre, agent);
+
     ShapingSignals {
         agent_prize_delta,
         opponent_prize_delta,
@@ -433,8 +459,41 @@ fn compute_shaping_signals(
         agent_damage_taken,
         agent_hp_preserved,
         agent_energy_attached,
+        agent_v_opp_delta,
+        agent_v_self_delta,
+        agent_prize_total: post.points[agent] as u32,
+        opponent_prize_total: post.points[opp] as u32,
         intermediate_actions,
     }
+}
+
+/// Phase 2 Step 0j — prize-weighted "KO proximity" sum over a player's
+/// in-play Pokémon. `ko_proximity(HP, max_HP) = 1 − (HP/max_HP)²` is the
+/// concave curve from `docs/reward-signal-catalog.md` §Simple smooth —
+/// its derivative roughly triples from 100% HP to 20% HP, so damage on
+/// already-wounded targets earns more shaping reward than damage on a
+/// full-health one. Prize value comes from `Card::get_knockout_points`
+/// (1 for regular, 2 for EX, 3 for Mega) so EX-weighted damage is
+/// implicit in the shape.
+///
+/// Dead slots contribute zero (the Pokémon has already been discarded and
+/// the prize credited via `agent_prize_delta`). A KO'd Pokémon between
+/// pre and post manifests as (positive pre value, zero post value) in
+/// the caller's delta, matching the existing `total_damage_done_to`
+/// semantics.
+fn board_value_for_player(state: &State, player: usize) -> f32 {
+    let mut v: f32 = 0.0;
+    for slot in 0..4 {
+        if let Some(pc) = &state.in_play_pokemon[player][slot] {
+            let max_hp = pc.get_effective_total_hp().max(1) as f32;
+            let remaining = pc.get_remaining_hp() as f32;
+            let ratio = (remaining / max_hp).clamp(0.0, 1.0);
+            let ko_proximity = 1.0 - ratio * ratio;
+            let prize = pc.card.get_knockout_points() as f32;
+            v += prize * ko_proximity;
+        }
+    }
+    v
 }
 
 /// Damage done to `target_player`'s Pokémon between `pre` and `post`.

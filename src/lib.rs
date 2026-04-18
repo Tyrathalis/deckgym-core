@@ -30,15 +30,15 @@ pub use deck::Deck;
 pub use game::Game;
 pub use hooks::to_playable_card;
 pub use move_generation::generate_possible_trainer_actions;
-pub use optimize::{
-    optimize, optimize_with_configs, EnemyDeckConfig, OptimizationConfig,
-    ParallelConfig, SimulationConfig,
-};
 #[cfg(feature = "cli")]
 pub use optimize::cli_optimize;
-pub use simulate::{Simulation, SimulationCallbacks};
+pub use optimize::{
+    optimize, optimize_with_configs, EnemyDeckConfig, OptimizationConfig, ParallelConfig,
+    SimulationConfig,
+};
 #[cfg(feature = "cli")]
 pub use simulate::simulate;
+pub use simulate::{Simulation, SimulationCallbacks};
 pub use simulation_event_handler::ComputedStats;
 pub use state::State;
 

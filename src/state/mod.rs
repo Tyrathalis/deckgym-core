@@ -442,9 +442,7 @@ impl State {
         // draw. A winner declared by end-of-turn checkup (which runs before
         // advance_turn, see apply_pokemon_checkup) takes precedence.
         if self.turn_count > VERSUS_TURN_LIMIT && self.winner.is_none() {
-            debug!(
-                "Turn limit ({VERSUS_TURN_LIMIT}) reached, declaring tie"
-            );
+            debug!("Turn limit ({VERSUS_TURN_LIMIT}) reached, declaring tie");
             self.winner = Some(GameOutcome::Tie);
             return;
         }
